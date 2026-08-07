@@ -57,12 +57,12 @@ External constraints include the repository's authoring conventions (markdownlin
 
 ## Users and Personas
 
-| Persona                            | Role                                           | Primary jobs-to-be-done                                   | Key pain points                                                       | Success outcome                                           |
-|------------------------------------|------------------------------------------------|-----------------------------------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------|
-| Business Analyst / Product Manager | End user authoring a BRD                       | Convert a business need into a structured, reviewable BRD | Manual templating; inconsistent quality; lost context across sessions | A complete, quality-gated BRD produced through guided Q&A |
-| project-planning maintainer        | Owns the BRD/PRD agents and shared skill       | Keep authoring logic consistent and low-drift             | Divergence between BRD and PRD flows                                  | Single shared skill drives both agents                    |
-| Downstream PRD author              | Consumes the BRD handoff                       | Seed a PRD from an approved BRD                           | Re-keying goals and requirements by hand                              | Valid `BRD_TO_PRD_HANDOFF_V1` seeds the PRD               |
-| HVE-Core platform maintainer       | Owns marketplace recipes, plugins, extension packaging | Keep distribution outputs green                   | Manual edits to generated outputs                                     | Regeneration stays consistent after changes               |
+| Persona                            | Role                                                   | Primary jobs-to-be-done                                   | Key pain points                                                       | Success outcome                                           |
+|------------------------------------|--------------------------------------------------------|-----------------------------------------------------------|-----------------------------------------------------------------------|-----------------------------------------------------------|
+| Business Analyst / Product Manager | End user authoring a BRD                               | Convert a business need into a structured, reviewable BRD | Manual templating; inconsistent quality; lost context across sessions | A complete, quality-gated BRD produced through guided Q&A |
+| project-planning maintainer        | Owns the BRD/PRD agents and shared skill               | Keep authoring logic consistent and low-drift             | Divergence between BRD and PRD flows                                  | Single shared skill drives both agents                    |
+| Downstream PRD author              | Consumes the BRD handoff                               | Seed a PRD from an approved BRD                           | Re-keying goals and requirements by hand                              | Valid `BRD_TO_PRD_HANDOFF_V1` seeds the PRD               |
+| HVE-Core platform maintainer       | Owns marketplace recipes, plugins, extension packaging | Keep distribution outputs green                           | Manual edits to generated outputs                                     | Regeneration stays consistent after changes               |
 
 ---
 
