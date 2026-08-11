@@ -148,7 +148,7 @@ main() {
   find .github/skills -name pyproject.toml -type f -execdir uv sync \;
 
   echo "Syncing Python environment for moderation eval..."
-  (cd scripts/evals/moderation && uv sync --frozen)
+  (cd scripts/evals/moderation && uv sync --locked)
 
   echo "System dependencies installed successfully"
 }
