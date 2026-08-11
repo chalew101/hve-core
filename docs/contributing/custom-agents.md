@@ -3,7 +3,7 @@ title: 'Contributing Agents to HVE Core'
 description: 'Requirements and standards for contributing GitHub Copilot agent files to hve-core'
 sidebar_position: 5
 author: Microsoft
-ms.date: 2026-08-02
+ms.date: 2026-08-11
 ms.topic: how-to
 ---
 
@@ -101,19 +101,19 @@ Not Accepted: Models not present in the catalog, models from providers outside t
 
 ### Model Selection for Subagents
 
-The `model` frontmatter property is **optional**. When omitted, the agent inherits the parent conversation model. Use explicit model selection for cost optimization on subagents that perform read-only or validation tasks:
+The `model` frontmatter property is **optional** and, per the [official custom agents configuration reference](https://docs.github.com/en/copilot/reference/custom-agents-configuration), must be a single **string** for GitHub.com, the Copilot CLI, and supported IDEs. When omitted, the agent inherits the parent conversation model. Use explicit model selection for cost optimization on subagents that perform read-only or validation tasks:
 
 ```yaml
 # Subagent that does research (read-only) — use fast-tier model
-model:
-  - Claude Haiku 4.5 (copilot)
-  - GPT-5.4 mini (copilot)
+model: Claude Haiku 4.5 (copilot)
 ```
 
 ```yaml
 # Subagent that writes code — omit model to inherit session model
 # (no model property)
 ```
+
+Do not use a YAML array for `model` (for example, a list of fallback models). VS Code Copilot Chat accepts an array for model fallback, but the Copilot CLI's frontmatter parser rejects it with `model: Expected string, received array` and drops the agent entirely, making it unavailable. This is an open, unresolved incompatibility tracked upstream in [github/copilot-cli#2133](https://github.com/github/copilot-cli/issues/2133); until it is resolved, always use a single scalar value here.
 
 Parent agents can also pass `model` dynamically on `runSubagent` calls via instructions in the agent body. The cost tier constraint means subagent models cannot exceed the parent model's tier.
 
