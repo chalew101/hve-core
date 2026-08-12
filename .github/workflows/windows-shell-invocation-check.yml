@@ -55,9 +55,19 @@ jobs:
       # this check: cmd.exe does not strip single quotes, so a pwsh -File
       # argument quoted with single quotes (e.g. -ExcludePaths '...') reaches
       # PowerShell with the literal apostrophes intact and silently fails to
-      # match. This job runs a representative npm script that previously
-      # broke this way, through npm's actual Windows shell (cmd.exe), so a
-      # future revert to single-quoted -File arguments fails CI instead of
+      # match. lint:links is the representative case, not an arbitrary pick:
+      # of the 11 npm scripts converted from `pwsh -Command "& '...'"` to
+      # `pwsh -File ...` (see commit 5f0b803d), it is the only one whose
+      # argument value contains a shell-metacharacter (`*`) that requires
+      # quoting to survive both cmd.exe and POSIX sh. The other 10
+      # (lint:frontmatter, lint:version-consistency, lint:permissions,
+      # lint:dangerous-workflow, lint:dependency-pinning, lint:pr-gate,
+      # lint:ai-artifacts, validate:devcontainer-lockfile, validate:skills,
+      # validate:ai-artifacts) pass only plain boolean switches or unquoted
+      # literal paths with no wildcards or spaces, so they are not exposed to
+      # this quoting-regression class and do not need Windows-specific
+      # coverage here. This job runs npm's actual Windows shell (cmd.exe) so
+      # a future revert to single-quoted -File arguments fails CI instead of
       # only surfacing on a contributor's Windows machine.
       - name: Run npm run lint:links via cmd.exe
         if: "!inputs.changed-files-only || steps.check.outputs.has_changes == 'true'"
