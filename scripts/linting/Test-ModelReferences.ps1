@@ -104,6 +104,31 @@ function Get-ModelReferences {
     return @($modelValue.ToString())
 }
 
+function Test-ModelValueIsArray {
+    <#
+    .SYNOPSIS
+    Determines whether a frontmatter model value is an array rather than a scalar string.
+
+    .PARAMETER Frontmatter
+    Parsed frontmatter hashtable.
+
+    .OUTPUTS
+    [bool] $true when the model property is declared as an array.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Frontmatter
+    )
+
+    $modelValue = $Frontmatter['model']
+    if ($null -eq $modelValue) {
+        return $false
+    }
+
+    return ($modelValue -is [System.Collections.IEnumerable] -and $modelValue -isnot [string])
+}
+
 #endregion Functions
 
 #region Main
@@ -181,12 +206,25 @@ function Invoke-ModelReferenceValidation {
         $filesWithModels++
         $fileStatus = 'valid'
         $fileModels = @()
+        $isArrayModelOnAgent = $file.Name -like '*.agent.md' -and (Test-ModelValueIsArray -Frontmatter $frontmatter)
+
+        if ($isArrayModelOnAgent) {
+            $fileStatus = 'invalid'
+            $errors += @{
+                file    = $relativePath
+                model   = ($models -join ', ')
+                message = 'Array-form model is not supported for agent files; the Copilot CLI requires a single scalar string'
+            }
+        }
 
         foreach ($modelName in $models) {
             $totalReferences++
             $fileModels += $modelName
 
-            if ($modelName -notin $validModelNames) {
+            if ($isArrayModelOnAgent) {
+                $invalidReferences++
+            }
+            elseif ($modelName -notin $validModelNames) {
                 $invalidReferences++
                 $fileStatus = 'invalid'
                 $errors += @{
