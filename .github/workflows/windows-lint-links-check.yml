@@ -2,6 +2,11 @@ name: Windows lint:links check (temporary)
 
 on:
   workflow_dispatch: {}
+  push:
+    branches:
+      - fix/lint-dependency-pinning-pwsh-invocation
+    paths:
+      - .github/workflows/windows-lint-links-check.yml
 
 permissions:
   contents: read
