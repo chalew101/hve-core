@@ -339,6 +339,15 @@ jobs:
     with:
       soft-fail: false
 
+  windows-shell-invocation-check:
+    name: Windows Shell Invocation Check
+    uses: ./.github/workflows/windows-shell-invocation-check.yml
+    permissions:
+      contents: read
+    with:
+      soft-fail: false
+      changed-files-only: true
+
   markdown-link-check:
     name: Markdown Link Check
     uses: ./.github/workflows/markdown-link-check.yml
@@ -772,6 +781,7 @@ jobs:
       - skill-validation
       - eval-validation
       - link-lang-check
+      - windows-shell-invocation-check
       - markdown-link-check
       - dependency-pinning-check
       - devcontainer-lockfile-check

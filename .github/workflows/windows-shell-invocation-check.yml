@@ -1,0 +1,66 @@
+# Copyright (c) 2026 Microsoft Corporation. All rights reserved.
+# SPDX-License-Identifier: MIT
+name: Windows Shell Invocation Check
+
+on:
+  workflow_call:
+    inputs:
+      soft-fail:
+        description: 'Whether to continue on invocation failures'
+        required: false
+        type: boolean
+        default: false
+      changed-files-only:
+        description: 'Only run when package.json changed'
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-shell-invocation-check:
+    name: Windows cmd.exe npm Script Check
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Check for changed package.json
+        id: check
+        if: inputs.changed-files-only
+        shell: bash
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha || github.event.before }}"
+          if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^package\.json$'; then
+            echo "has_changes=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            echo "package.json unchanged; skipping Windows cmd.exe invocation check"
+          fi
+
+      - name: Set up Node
+        if: "!inputs.changed-files-only || steps.check.outputs.has_changes == 'true'"
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+
+      # Regression guard for the pwsh -File / cmd.exe quoting bug fixed alongside
+      # this check: cmd.exe does not strip single quotes, so a pwsh -File
+      # argument quoted with single quotes (e.g. -ExcludePaths '...') reaches
+      # PowerShell with the literal apostrophes intact and silently fails to
+      # match. This job runs a representative npm script that previously
+      # broke this way, through npm's actual Windows shell (cmd.exe), so a
+      # future revert to single-quoted -File arguments fails CI instead of
+      # only surfacing on a contributor's Windows machine.
+      - name: Run npm run lint:links via cmd.exe
+        if: "!inputs.changed-files-only || steps.check.outputs.has_changes == 'true'"
+        shell: cmd
+        run: npm run lint:links
+        continue-on-error: ${{ inputs.soft-fail }}
