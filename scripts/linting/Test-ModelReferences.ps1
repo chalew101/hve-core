@@ -198,22 +198,28 @@ function Invoke-ModelReferenceValidation {
             continue
         }
 
+        $isArrayModelOnAgent = $file.Name -like '*.agent.md' -and (Test-ModelValueIsArray -Frontmatter $frontmatter)
         $models = Get-ModelReferences -Frontmatter $frontmatter
-        if ($models.Count -eq 0) {
+        if ($models.Count -eq 0 -and -not $isArrayModelOnAgent) {
             continue
         }
 
         $filesWithModels++
         $fileStatus = 'valid'
         $fileModels = @()
-        $isArrayModelOnAgent = $file.Name -like '*.agent.md' -and (Test-ModelValueIsArray -Frontmatter $frontmatter)
 
         if ($isArrayModelOnAgent) {
             $fileStatus = 'invalid'
             $errors += @{
                 file    = $relativePath
-                model   = ($models -join ', ')
+                model   = if ($models.Count -gt 0) { $models -join ', ' } else { '[]' }
                 message = 'Array-form model is not supported for agent files; the Copilot CLI requires a single scalar string'
+            }
+            if ($models.Count -eq 0) {
+                # Empty array-form model (`model: []`) has no per-model entries to loop over below,
+                # so count it here to keep totals consistent with the reported error.
+                $totalReferences++
+                $invalidReferences++
             }
         }
 

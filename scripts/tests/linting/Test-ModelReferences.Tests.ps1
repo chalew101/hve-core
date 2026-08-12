@@ -480,6 +480,50 @@ model:
         }
     }
 
+    Context 'when an agent file declares an empty array-form model' {
+        BeforeAll {
+            $script:AgentEmptyArrayDir = Join-Path $script:ValidationDir 'agent-empty-array-model'
+            New-Item -ItemType Directory -Path $script:AgentEmptyArrayDir -Force | Out-Null
+
+            # Agent file with an empty array-form model (model: [])
+            @"
+---
+name: Empty Array Agent
+model: []
+---
+
+# Agent
+"@ | Set-Content -Path (Join-Path $script:AgentEmptyArrayDir 'empty-array.agent.md') -Encoding utf8
+
+            $script:AgentEmptyArrayResult = Invoke-ModelReferenceValidation -CatalogPath $script:TestCatalogPath -ScanPath $script:AgentEmptyArrayDir
+        }
+
+        It 'Does not skip the file via the zero-model early return' {
+            $script:AgentEmptyArrayResult.results | Should -HaveCount 1
+        }
+
+        It 'Marks file result as invalid' {
+            $script:AgentEmptyArrayResult.results[0].status | Should -Be 'invalid'
+        }
+
+        It 'Counts the file among files with models' {
+            $script:AgentEmptyArrayResult.filesWithModels | Should -Be 1
+        }
+
+        It 'Reports one invalid reference' {
+            $script:AgentEmptyArrayResult.invalidReferences | Should -Be 1
+        }
+
+        It 'Reports zero valid references' {
+            $script:AgentEmptyArrayResult.validReferences | Should -Be 0
+        }
+
+        It 'Contains one descriptive error about array-form model' {
+            $script:AgentEmptyArrayResult.errors | Should -HaveCount 1
+            $script:AgentEmptyArrayResult.errors[0].message | Should -Match 'Array-form model is not supported for agent files'
+        }
+    }
+
     Context 'when files have no model property' {
         BeforeAll {
             $script:NoModelDir = Join-Path $script:ValidationDir 'no-model'
