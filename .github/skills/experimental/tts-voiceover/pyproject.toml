@@ -8,6 +8,7 @@ dependencies = [
     "lxml>=6.1.0",  # direct dep (embed_audio.py) and transitive via python-pptx; explicit pin ensures CVE patches
     "python-pptx>=1.0",
     "pyyaml>=6.0",
+    "Pillow>=12.3.0",  # transitive via python-pptx; CVE-2026-54058/54059/54060/55379/55798/59199/59205 fixed in 12.3.0
 ]
 
 [dependency-groups]
