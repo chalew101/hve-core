@@ -3,7 +3,7 @@ title: Security Assurance Case and Security Model
 description: Comprehensive security model and security assurance documentation demonstrating enterprise security practices
 sidebar_position: 2
 author: Microsoft
-ms.date: 2026-08-06
+ms.date: 2026-08-07
 ms.topic: reference
 keywords:
   - security
@@ -240,16 +240,16 @@ This section documents threats using [STRIDE](https://learn.microsoft.com/azure/
 
 #### T-3: Script Injection via Workflow Inputs
 
-| Field             | Value                                                                                                                                                                       |
-|-------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Category**      | Tampering / Elevation of Privilege                                                                                                                                          |
-| **Asset**         | GitHub Actions `run:` steps                                                                                                                                                 |
-| **Threat**        | A caller-controlled `workflow_call` input interpolated directly into a shell command can alter command structure and execute unintended instructions on the workflow runner |
-| **Likelihood**    | Low (requires a caller able to invoke the reusable workflow with crafted input)                                                                                             |
-| **Impact**        | Medium (command execution is limited by the runner and job permissions but can affect build integrity)                                                                      |
-| **Mitigations**   | Route user-controlled expressions through step-level `env:` variables and reference native shell variables inside `run:` blocks; CodeQL `actions/code-injection` scanning   |
-| **Residual Risk** | Low to Medium while any legacy inline input interpolation remains                                                                                                           |
-| **Status**        | Partially Mitigated                                                                                                                                                         |
+| Field             | Value                                                                                                                                                                   |
+|-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Category**      | Tampering / Elevation of Privilege                                                                                                                                      |
+| **Asset**         | GitHub Actions `run:` and `actions/github-script` step bodies                                                                                                           |
+| **Threat**        | A `workflow_call` or `workflow_dispatch` input interpolated directly into a shell command can alter command structure and execute unintended instructions on the runner |
+| **Likelihood**    | Low (requires a reusable-workflow caller, or an actor with `actions: write`, able to supply crafted input)                                                              |
+| **Impact**        | Medium (command execution is limited by the runner and job permissions but can affect build integrity)                                                                  |
+| **Mitigations**   | CQ-6 routes caller-controlled inputs through step-level `env:` variables; `Test-DangerousWorkflow.ps1` blocks regressions; CodeQL `actions/code-injection` scanning     |
+| **Residual Risk** | Low                                                                                                                                                                     |
+| **Status**        | Mitigated                                                                                                                                                               |
 
 #### R-1: Untraceable Configuration Changes
 
@@ -1050,8 +1050,8 @@ External standards are cited inline.
 
 ### Jira Credential Threats
 
-These threats address credential and error-handling risks specific to the [Jira skill](https://github.com/microsoft/hve-core/blob/main/.github/skills/jira/jira/SKILL.md) (`.github/skills/jira/jira/scripts/jira.py`), a single-file standard-library CLI that authenticates to a Jira instance with a PAT (`Authorization: Bearer`) or Jira Cloud Basic auth (`base64(email:token)`) read from the environment per invocation.
-The catalog uses the same extended 11-row format as the OAuth threats. The authoritative per-skill model is the [Jira skill `SECURITY.md`](https://github.com/microsoft/hve-core/blob/main/.github/skills/jira/jira/SECURITY.md).
+These threats address credential and error-handling risks specific to the [Jira skill](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/jira/SKILL.md) (`.github/skills/project-planning/jira/scripts/jira.py`), a single-file standard-library CLI that authenticates to a Jira instance with a PAT (`Authorization: Bearer`) or Jira Cloud Basic auth (`base64(email:token)`) read from the environment per invocation.
+The catalog uses the same extended 11-row format as the OAuth threats. The authoritative per-skill model is the [Jira skill `SECURITY.md`](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/jira/SECURITY.md).
 Residual redaction-architecture hardening (central `_emit()` sink, `LOGGER`, typed `JiraAPIError`, source-contract redaction tests) is tracked on issues #1555, #1556, and #1559.
 
 #### JR-1: PAT Exfiltration via Traceback or Error Message
@@ -1168,8 +1168,8 @@ Residual redaction-architecture hardening (central `_emit()` sink, `LOGGER`, typ
 
 ### GitLab Credential Threats
 
-These threats address credential and error-handling risks specific to the [GitLab skill](https://github.com/microsoft/hve-core/blob/main/.github/skills/gitlab/gitlab/SKILL.md) (`.github/skills/gitlab/gitlab/scripts/gitlab.py`), a single-file standard-library CLI that authenticates with a PAT (`PRIVATE-TOKEN` header) read from `GITLAB_TOKEN` and resolves the project from a read-only `git remote` subprocess.
-The authoritative per-skill model is the [GitLab skill `SECURITY.md`](https://github.com/microsoft/hve-core/blob/main/.github/skills/gitlab/gitlab/SECURITY.md).
+These threats address credential and error-handling risks specific to the [GitLab skill](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/gitlab/SKILL.md) (`.github/skills/project-planning/gitlab/scripts/gitlab.py`), a single-file standard-library CLI that authenticates with a PAT (`PRIVATE-TOKEN` header) read from `GITLAB_TOKEN` and resolves the project from a read-only `git remote` subprocess.
+The authoritative per-skill model is the [GitLab skill `SECURITY.md`](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/gitlab/SECURITY.md).
 Residual redaction-architecture hardening (central `_emit()` sink, `LOGGER`, typed `GitLabAPIError` replacing `die()`, single-`urlopen` refactor, source-contract tests) is tracked on issues #1555, #1557, and #1559.
 
 #### GL-1: `PRIVATE-TOKEN` Exfiltration via Traceback or Error Message
@@ -1477,12 +1477,31 @@ CQ-6 keeps GitHub expression evaluation out of shell command text. A workflow ma
 input such as `${{ inputs.version }}` to an environment variable, then reads the shell's
 native variable (`$INPUT_VERSION` or `$env:INPUT_VERSION`) inside the `run:` block.
 Matrix values generated from repository-controlled configuration do not cross the same
-caller-controlled boundary. The extension packaging workflow applies this pattern to
-version, development-patch, and channel inputs. Other reusable workflows still
-interpolate workflow-call inputs directly inside `run:` blocks, so T-3 remains Partially
-Mitigated. CodeQL provides `actions/code-injection` detection for supported patterns;
-the homegrown dangerous-workflow gate currently covers selected event and workflow-output
-expressions rather than enforcing CQ-6 for workflow-call inputs across the fleet.
+caller-controlled boundary.
+
+`Test-DangerousWorkflow.ps1` enforces the boundary through the
+`dangerous-workflow/direct-input-interpolation` rule, which fails the
+`lint:dangerous-workflow` lane and the `dangerous-workflow-check` required check. The rule
+is type-driven rather than text-driven: it resolves each `inputs.<name>` reference found in
+a `run:` body or an `actions/github-script` `script:` body against the declared type in
+`on.workflow_call.inputs` or `on.workflow_dispatch.inputs`, and reports every reference
+whose type is not `boolean`. The scan covers `.github/workflows` and `.github/actions`.
+
+Composite action metadata is held to a stricter rule. The action metadata schema gives
+`inputs.<input_id>` only `description`, `required`, `default`, and `deprecationMessage`, so
+an action input cannot declare itself boolean and no exception applies. Every action input
+reaching a `runs.steps[*].run` body is reported as `untyped`. This matters because a
+composite action is otherwise a laundering path: a workflow input passed through a step
+`with:` value would reach shell command text on the far side of the CQ-6 boundary.
+
+One documented exception is retained. An input declared `type: boolean` is exempt because
+GitHub constrains that type to the literals `true` and `false`, so the substituted text can
+carry no shell metacharacters, and callers that supply a mismatched value are rejected
+before the workflow runs. Every other declared type carries arbitrary caller text, and an
+input whose declared type cannot be resolved is treated as a violation so the gate fails
+closed. Interpolations outside shell command text, such as `working-directory:`, `if:`,
+and action `with:` values, are not shell command text and remain in scope for CodeQL rather
+than for CQ-6.
 
 ### Access Controls
 
@@ -1644,15 +1663,15 @@ Those models follow a shared structure (assets, adversaries, trust buckets with 
 
 | Skill                               | Runtime surface                                                                                                                                                                                                                                                                                                   | Primary residual gaps                                                                                                                                                                                                                                                                        | Security model                                                                                                              |
 |-------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| jira                                | REST CLI; environment credentials                                                                                                                                                                                                                                                                                 | No token revocation; best-effort redaction; no cert pinning                                                                                                                                                                                                                                  | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/jira/jira/SECURITY.md)                         |
-| gitlab                              | REST CLI; environment credentials; git-remote subprocess                                                                                                                                                                                                                                                          | Untrusted CI-trace egress; insecure-transport opt-out; no cert pinning                                                                                                                                                                                                                       | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/gitlab/gitlab/SECURITY.md)                     |
+| jira                                | REST CLI; environment credentials                                                                                                                                                                                                                                                                                 | No token revocation; best-effort redaction; no cert pinning                                                                                                                                                                                                                                  | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/jira/SECURITY.md)             |
+| gitlab                              | REST CLI; environment credentials; git-remote subprocess                                                                                                                                                                                                                                                          | Untrusted CI-trace egress; insecure-transport opt-out; no cert pinning                                                                                                                                                                                                                       | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/project-planning/gitlab/SECURITY.md)           |
 | mural (experimental)                | REST CLI; embedded stdio MCP server; OAuth token store                                                                                                                                                                                                                                                            | OAuth audit gaps; keyring backend toggle is code-execution surface                                                                                                                                                                                                                           | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/mural/SECURITY.md)                |
 | tts-voiceover (experimental)        | Azure Speech egress; key/Entra credentials; SSML + PPTX parsing                                                                                                                                                                                                                                                   | Content egress to Azure region; broad credential chain                                                                                                                                                                                                                                       | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/tts-voiceover/SECURITY.md)        |
 | accessibility                       | Arbitrary-URL scan egress; unpinned `npx @axe-core/cli` subprocess                                                                                                                                                                                                                                                | Unpinned scanner package; no egress allow-list (SSRF); headless-browser surface                                                                                                                                                                                                              | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/accessibility/accessibility/SECURITY.md)       |
 | powerpoint (experimental)           | Sandboxed `content-extra.py` execution; LibreOffice/MuPDF document parsing                                                                                                                                                                                                                                        | Denylist confinement is not OS-level; external-parser CVE exposure                                                                                                                                                                                                                           | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/powerpoint/SECURITY.md)           |
 | video-to-gif (experimental)         | Local CLI (bash + PowerShell); FFmpeg/ffprobe subprocess; untrusted media parsing                                                                                                                                                                                                                                 | Inherited FFmpeg decoder CVE exposure; bare-filename search resolution                                                                                                                                                                                                                       | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/video-to-gif/SECURITY.md)         |
 | copilot-otel-metrics (experimental) | Diff-approved per-key write into the user's global settings.json; loopback OTLP telemetry ingest into a containerized Grafana/Prometheus/Tempo stack; four stdlib Python reference helpers querying local APIs; generated collector configuration, Bicep, Terraform, and Azure CLI templates the operator deploys | Prompt content present in spans despite the documented capture default; shared fleet-wide ingest credential with no per-user binding or in-place rotation; unauthenticated loopback ingest; the no-execution boundary on Docker and infrastructure commands is advisory rather than enforced | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/copilot-otel-metrics/SECURITY.md) |
-| gh-code-scanning                    | GitHub code-scanning read via `gh` CLI subprocess; stdout only                                                                                                                                                                                                                                                    | Unpinned `gh`/`jq` PATH dependencies; TLS delegated to `gh`                                                                                                                                                                                                                                  | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/github/gh-code-scanning/SECURITY.md)           |
+| gh-code-scanning                    | GitHub code-scanning read via `gh` CLI subprocess; stdout only                                                                                                                                                                                                                                                    | Unpinned `gh`/`jq` PATH dependencies; TLS delegated to `gh`                                                                                                                                                                                                                                  | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/security/gh-code-scanning/SECURITY.md)         |
 | customer-card-render (experimental) | Local Python CLI; regex parse of untrusted DT markdown; YAML emission                                                                                                                                                                                                                                             | Inherited powerpoint build toolchain; confidential DT prose egress                                                                                                                                                                                                                           | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/experimental/customer-card-render/SECURITY.md) |
 | vex                                 | Local Python gate (`vex_gate.py`); anchored-regex parse of untrusted detection-issue body; `json.loads` of local OpenVEX doc; exit code only                                                                                                                                                                      | Gate-suppression by issue-edit access; forced-proceed AI-credit consumption                                                                                                                                                                                                                  | [SECURITY.md](https://github.com/microsoft/hve-core/blob/main/.github/skills/security/vex/SECURITY.md)                      |
 
