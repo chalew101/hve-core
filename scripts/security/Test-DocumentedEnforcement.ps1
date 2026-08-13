@@ -1,4 +1,4 @@
-#!/usr/bin/env pwsh
+﻿#!/usr/bin/env pwsh
 # Copyright (c) 2026 Microsoft Corporation. All rights reserved.
 # SPDX-License-Identifier: MIT
 
@@ -483,7 +483,7 @@ function Find-EnforcementInvocation {
         [hashtable]$Cache
     )
 
-    $matches = [System.Collections.Generic.List[pscustomobject]]::new()
+    $invocationMatches = [System.Collections.Generic.List[pscustomobject]]::new()
 
     foreach ($workflowFile in $WorkflowFiles) {
         $definition = Get-WorkflowDefinition -WorkflowPath $workflowFile -Cache $Cache
@@ -493,12 +493,12 @@ function Find-EnforcementInvocation {
 
         foreach ($jobId in @($definition.jobs.Keys)) {
             if (Test-StepInvokesTarget -Job $definition.jobs[$jobId] -ScriptPath $ScriptPath -NpmAlias $NpmAlias) {
-                $matches.Add([pscustomobject]@{ WorkflowFile = $workflowFile; JobId = $jobId }) | Out-Null
+                $invocationMatches.Add([pscustomobject]@{ WorkflowFile = $workflowFile; JobId = $jobId }) | Out-Null
             }
         }
     }
 
-    return $matches.ToArray()
+    return $invocationMatches.ToArray()
 }
 
 function Find-GatingJob {
