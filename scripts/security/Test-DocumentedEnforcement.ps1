@@ -411,10 +411,12 @@ function Test-StepInvokesTarget {
 
         [Parameter(Mandatory = $true)]
         [AllowNull()]
+        [AllowEmptyString()]
         [string]$ScriptPath,
 
         [Parameter(Mandatory = $false)]
         [AllowNull()]
+        [AllowEmptyString()]
         [string]$NpmAlias
     )
 

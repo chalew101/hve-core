@@ -88,6 +88,123 @@ Describe 'Get-DocumentedEnforcementRule' -Tag 'Unit' {
     }
 }
 
+Describe 'Get-WorkflowDefinition' -Tag 'Unit' {
+    BeforeEach {
+        $script:Cache = @{}
+    }
+
+    It 'Parses a workflow YAML file into a structured object' {
+        $definition = Get-WorkflowDefinition -WorkflowPath $script:GateWorkflowPath -Cache $script:Cache
+        $definition.jobs.Keys | Should -Contain 'direct-job'
+    }
+
+    It 'Caches the parsed definition across repeated calls' {
+        Get-WorkflowDefinition -WorkflowPath $script:GateWorkflowPath -Cache $script:Cache | Out-Null
+        $script:Cache.ContainsKey($script:GateWorkflowPath) | Should -BeTrue
+        $second = Get-WorkflowDefinition -WorkflowPath $script:GateWorkflowPath -Cache $script:Cache
+        $second | Should -Be $script:Cache[$script:GateWorkflowPath]
+    }
+
+    It 'Returns null for a workflow path that does not exist' {
+        $definition = Get-WorkflowDefinition -WorkflowPath (Join-Path $script:WorkflowsPath 'does-not-exist.yml') -Cache $script:Cache
+        $definition | Should -BeNullOrEmpty
+    }
+}
+
+Describe 'Test-StepInvokesTarget' -Tag 'Unit' {
+    BeforeAll {
+        $script:Cache = @{}
+        $script:GateDefinition = Get-WorkflowDefinition -WorkflowPath $script:GateWorkflowPath -Cache $script:Cache
+    }
+
+    It 'Returns true when a step run command contains the script path' {
+        $job = $script:GateDefinition.jobs['direct-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeTrue
+    }
+
+    It 'Returns true when a step run command matches the npm alias' {
+        $job = $script:GateDefinition.jobs['npm-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath $null -NpmAlias 'lint:fixture' | Should -BeTrue
+    }
+
+    It 'Returns false when no step matches the script path or npm alias' {
+        $job = $script:GateDefinition.jobs['direct-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-NotWired-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+
+    It 'Returns false for a null job' {
+        Test-StepInvokesTarget -Job $null -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+
+    It 'Returns false for a job with no steps' {
+        $jobWithNoSteps = [pscustomobject]@{ steps = $null }
+        Test-StepInvokesTarget -Job $jobWithNoSteps -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+}
+
+Describe 'Find-EnforcementInvocation' -Tag 'Unit' {
+    BeforeAll {
+        $script:Cache = @{}
+        $script:AllWorkflowFiles = @(Get-ChildItem -Path $script:WorkflowsPath -Filter '*.yml' -File | ForEach-Object { $_.FullName })
+    }
+
+    It 'Finds a job that invokes the script in any workflow file, including non-gate workflows' {
+        $invocations = Find-EnforcementInvocation -WorkflowFiles $script:AllWorkflowFiles -ScriptPath 'scripts/security/Test-Elsewhere-Fixture.ps1' -NpmAlias $null -Cache $script:Cache
+        $invocations.Count | Should -Be 1
+        $invocations[0].JobId | Should -Be 'elsewhere-job'
+    }
+
+    It 'Returns an empty array when no workflow invokes the script' {
+        $invocations = Find-EnforcementInvocation -WorkflowFiles $script:AllWorkflowFiles -ScriptPath 'scripts/security/Test-NotWired-Fixture.ps1' -NpmAlias $null -Cache $script:Cache
+        $invocations.Count | Should -Be 0
+    }
+}
+
+Describe 'Find-GatingJob' -Tag 'Unit' {
+    BeforeEach {
+        $script:Cache = @{}
+    }
+
+    It 'Finds a job in the gate workflow that directly invokes the script' {
+        $jobs = Find-GatingJob -GateWorkflowPath $script:GateWorkflowPath -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null -Cache $script:Cache -RepoRoot $script:FixturesPath
+        $jobs | Should -Contain 'direct-job'
+    }
+
+    It 'Attributes a reusable-workflow-chain invocation to the calling job' {
+        $jobs = Find-GatingJob -GateWorkflowPath $script:GateWorkflowPath -ScriptPath 'scripts/security/Test-Reusable-Fixture.ps1' -NpmAlias $null -Cache $script:Cache -RepoRoot $script:FixturesPath
+        $jobs | Should -Contain 'reusable-caller-job'
+    }
+
+    It 'Returns an empty array when no job in the gate workflow reaches the script' {
+        $jobs = Find-GatingJob -GateWorkflowPath $script:GateWorkflowPath -ScriptPath 'scripts/security/Test-Elsewhere-Fixture.ps1' -NpmAlias $null -Cache $script:Cache -RepoRoot $script:FixturesPath
+        $jobs.Count | Should -Be 0
+    }
+
+    It 'Returns an empty array when the gate workflow path does not exist' {
+        $jobs = Find-GatingJob -GateWorkflowPath (Join-Path $script:WorkflowsPath 'does-not-exist.yml') -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null -Cache $script:Cache -RepoRoot $script:FixturesPath
+        $jobs.Count | Should -Be 0
+    }
+}
+
+Describe 'Get-GateNeedsList' -Tag 'Unit' {
+    BeforeEach {
+        $script:Cache = @{}
+    }
+
+    It 'Returns the aggregator gate job needs list' {
+        $needs = Get-GateNeedsList -GateWorkflowPath $script:GateWorkflowPath -GateJobId 'fixture-gate-success' -Cache $script:Cache
+        $needs | Should -Contain 'direct-job'
+        $needs | Should -Contain 'reusable-caller-job'
+        $needs | Should -Contain 'npm-job'
+        $needs | Should -Not -Contain 'notgated-job'
+    }
+
+    It 'Returns an empty array when the gate job id does not exist' {
+        $needs = Get-GateNeedsList -GateWorkflowPath $script:GateWorkflowPath -GateJobId 'nonexistent-gate' -Cache $script:Cache
+        $needs.Count | Should -Be 0
+    }
+}
+
 Describe 'Get-DocumentedEnforcementResult' -Tag 'Unit' {
     BeforeAll {
         $script:Results = Get-DocumentedEnforcementResult `
