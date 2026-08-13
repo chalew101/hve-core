@@ -102,7 +102,6 @@ Individual validation workflows called by orchestration workflows:
 | `frontmatter-validation.yml`          | AI artifact frontmatter schemas                  | `npm run lint:frontmatter`               |
 | `markdown-link-check.yml`             | Broken link detection                            | `npm run lint:md-links`                  |
 | `link-lang-check.yml`                 | Link language validation                         | `npm run lint:links`                     |
-| `windows-shell-invocation-check.yml`  | Windows cmd.exe npm script invocation regression | `npm run lint:links`                     |
 | `yaml-lint.yml`                       | YAML syntax validation                           | `npm run lint:yaml`                      |
 | `ps-script-analyzer.yml`              | PowerShell static analysis                       | `npm run lint:ps`                        |
 | `table-format.yml`                    | Markdown table formatting                        | `npm run format:tables`                  |
@@ -156,7 +155,6 @@ flowchart LR
         YL[yaml-lint]
         FV[frontmatter-validation]
         LLC[link-lang-check]
-        WSI[windows-shell-invocation-check]
         MLC[markdown-link-check]
         CH[copyright-headers]
     end
@@ -190,7 +188,6 @@ flowchart LR
 | frontmatter-validation         | `frontmatter-validation.yml`         | AI artifact metadata                  |
 | skill-validation               | `skill-validation.yml`               | Skill directory structure             |
 | link-lang-check                | `link-lang-check.yml`                | Link accessibility                    |
-| windows-shell-invocation-check | `windows-shell-invocation-check.yml` | Windows cmd.exe npm script invocation |
 | markdown-link-check            | `markdown-link-check.yml`            | Broken links                          |
 | dependency-pinning-check       | `dependency-pinning-scan.yml`        | Dependency pinning                    |
 | devcontainer-lockfile-check    | `devcontainer-lockfile-check.yml`    | Devcontainer lockfile integrity       |
@@ -371,7 +368,7 @@ Workflows invoke validation through npm scripts defined in `package.json`:
 | `spell-check:fix`               | `cspell --show-suggestions`                                                                           | Local                                                   |
 | `lint:frontmatter`              | `Validate-MarkdownFrontmatter.ps1`                                                                    | frontmatter-validation.yml                              |
 | `lint:md-links`                 | `Markdown-Link-Check.ps1`                                                                             | markdown-link-check.yml                                 |
-| `lint:links`                    | `Invoke-LinkLanguageCheck.ps1`                                                                        | link-lang-check.yml, windows-shell-invocation-check.yml |
+| `lint:links`                    | `Invoke-LinkLanguageCheck.ps1`                                                                        | link-lang-check.yml                                     |
 | `lint:yaml`                     | `Invoke-YamlLint.ps1`                                                                                 | yaml-lint.yml                                           |
 | `lint:ps`                       | `Invoke-PSScriptAnalyzer.ps1`                                                                         | ps-script-analyzer.yml                                  |
 | `lint:marketplace`              | `Validate-Marketplace.ps1`                                                                            | plugin-validation.yml                                   |

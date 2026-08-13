@@ -100,7 +100,7 @@
     "ci:eval:behavior-skills": "vally eval --eval-spec evals/behavior-conformance/skill-behavior.eval.yaml",
     "ci:eval:agent": "pwsh -NoProfile -File scripts/evals/Invoke-AgentMatrix.ps1",
     "ci:eval:agent:matrix": "pwsh -NoProfile -File scripts/evals/Invoke-AgentMatrix.ps1 -All -Tier nightly",
-    "ci:eval:agent:matrix:dryrun": "pwsh -NoProfile -Command \"& scripts/evals/Invoke-AgentMatrix.ps1 -All -Tier nightly -WhatIf\"",
+    "ci:eval:agent:matrix:dryrun": "pwsh -NoProfile -File scripts/evals/Invoke-AgentMatrix.ps1 -All -Tier nightly -WhatIf",
     "ci:eval:agent:changed": "pwsh -NoProfile -Command \"& scripts/evals/Invoke-AgentMatrix.ps1 -Changed @((git diff --name-only (([Environment]::GetEnvironmentVariable('EVAL_BASE_REF') ?? (git symbolic-ref --quiet --short refs/remotes/origin/HEAD) ?? 'origin/main') + '...HEAD'))) -Tier pr\"",
     "ci:eval:agent:dashboard": "pwsh -NoProfile -File scripts/evals/New-AgentMatrixDashboard.ps1",
     "ci:eval:agent:dashboard:open": "pwsh -NoProfile -File scripts/evals/New-AgentMatrixDashboard.ps1 -Open",
