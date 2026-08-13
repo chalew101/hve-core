@@ -1,0 +1,15 @@
+name: Fixture Elsewhere
+
+on:
+  schedule:
+    - cron: '0 0 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  elsewhere-job:
+    name: Elsewhere Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/security/Test-Elsewhere-Fixture.ps1 -FailOnViolation

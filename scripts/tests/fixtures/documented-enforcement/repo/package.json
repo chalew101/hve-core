@@ -1,0 +1,6 @@
+{
+  "scripts": {
+    "lint:fixture": "pwsh -NoProfile -File scripts/security/Test-Fixture.ps1 -FailOnViolation",
+    "lint:no-script": "echo no resolvable script path here"
+  }
+}

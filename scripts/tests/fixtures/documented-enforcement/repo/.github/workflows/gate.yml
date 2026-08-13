@@ -1,0 +1,41 @@
+name: Fixture Gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  direct-job:
+    name: Direct Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/security/Test-Fixture.ps1 -FailOnViolation
+
+  reusable-caller-job:
+    name: Reusable Caller Job
+    uses: ./.github/workflows/reusable.yml
+
+  notgated-job:
+    name: Not Gated Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: ./scripts/security/Test-NotGated-Fixture.ps1 -FailOnViolation
+
+  npm-job:
+    name: Npm Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: npm run lint:fixture
+
+  fixture-gate-success:
+    name: Fixture Gate Success
+    runs-on: ubuntu-latest
+    if: always()
+    needs:
+      - direct-job
+      - reusable-caller-job
+      - npm-job
+    steps:
+      - run: echo gate

@@ -27,7 +27,9 @@ uses: actions/checkout@v4.2.2
 
 Local reusable workflows referenced via relative paths are excluded from SHA pinning requirements.
 
-**Enforcement:** Violations are detected by `scripts/security/Test-DependencyPinning.ps1` and `scripts/security/Test-SHAStaleness.ps1`. CI will fail on SHA pinning violations.
+**Enforcement:** Violations are detected by `scripts/security/Test-DependencyPinning.ps1`. CI will fail on SHA pinning violations.
+
+**Monitoring:** `scripts/security/Test-SHAStaleness.ps1` flags SHA pins that have grown old relative to their upstream tag on a weekly schedule (`weekly-security-maintenance.yml`), not on every pull request. It queries the GitHub API per pinned action, so running it on every PR would add rate-limit exposure and latency without blocking a real vulnerability (an old pin that still resolves to a good commit is not itself insecure). Findings surface as build warnings, not a PR-blocking gate.
 
 ## Permissions
 
@@ -256,11 +258,12 @@ All workflows MUST pass the following validation checks:
 * **What it enforces:** All third-party actions use full SHA pins
 * **CI blocking:** Failures block CI when configured to enforce compliance
 
-### SHA Staleness Validation
+### SHA Staleness Monitoring
 
 * **Script:** `scripts/security/Test-SHAStaleness.ps1`
-* **What it enforces:** SHA-pinned dependencies are not stale
-* **CI blocking:** Stale dependencies generate warnings and may fail CI
+* **What it flags:** SHA-pinned dependencies that have grown old relative to their upstream tag
+* **Schedule:** Weekly, via `weekly-security-maintenance.yml`
+* **Blocking:** No. Findings post as build warnings; this check does not gate pull request merge.
 
 ### Workflow Permissions Validation
 
@@ -331,12 +334,14 @@ The `gate-completeness-check` job enforces this rule in CI, failing the workflow
 
 ## Enforcement Statement
 
-The following scripts enforce compliance:
+The following scripts enforce compliance and gate pull request merge:
 
 * `scripts/security/Test-DependencyPinning.ps1` - Validates dependency pinning
-* `scripts/security/Test-SHAStaleness.ps1` - Checks for stale dependencies
 * `scripts/security/Test-WorkflowPermissions.ps1` - Validates workflow permissions declarations
 * `scripts/linting/Invoke-YamlLint.ps1` - Runs actionlint validation
 * `scripts/security/Test-PrValidationGate.ps1` - Validates the PR validation gate `needs:` completeness
+* `scripts/security/Test-DocumentedEnforcement.ps1` - Validates that documented enforcement scripts are wired into a workflow job and that job is gated by `pr-validation-success`
 
 All workflows must pass these validation checks to be merged into the repository.
+
+`scripts/security/Test-SHAStaleness.ps1` is a weekly monitoring check, not a merge-blocking one; see SHA Staleness Monitoring above.

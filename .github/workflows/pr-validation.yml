@@ -778,6 +778,24 @@ jobs:
               -CandidateSourceCatalog "$CANDIDATE_SOURCE_CATALOG" \
               -BaselineTag "$BASELINE_TAG"
 
+  documented-enforcement-check:
+    name: Documented Enforcement Check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup PowerShell modules
+        uses: ./.github/actions/setup-ps-modules
+
+      - name: Validate documented enforcement
+        shell: pwsh
+        run: ./scripts/security/Test-DocumentedEnforcement.ps1 -FailOnViolation
+
   pr-validation-success:
     name: PR Validation Success
     runs-on: ubuntu-latest
@@ -820,6 +838,7 @@ jobs:
       - npm-audit
       - codeql
       - gate-completeness-check
+      - documented-enforcement-check
     steps:
       - name: Verify all jobs succeeded
         env:
