@@ -23,6 +23,30 @@ jobs:
     steps:
       - run: ./scripts/security/Test-NotGated-Fixture.ps1 -FailOnViolation
 
+  echo-only-job:
+    name: Echo Only Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # ./scripts/security/Test-Fixture.ps1 -FailOnViolation
+          echo "would run scripts/security/Test-Fixture.ps1 here"
+          echo "npm run lint:fixture is documented but not invoked"
+
+  comment-only-job:
+    name: Comment Only Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          # scripts/security/Test-Fixture.ps1 -FailOnViolation
+          # npm run lint:fixture
+          exit 0
+
+  argument-only-job:
+    name: Argument Only Job
+    runs-on: ubuntu-latest
+    steps:
+      - run: cat scripts/security/Test-Fixture.ps1
+
   npm-job:
     name: Npm Job
     runs-on: ubuntu-latest

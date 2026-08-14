@@ -132,6 +132,31 @@ Describe 'Test-StepInvokesTarget' -Tag 'Unit' {
         Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-NotWired-Fixture.ps1' -NpmAlias $null | Should -BeFalse
     }
 
+    It 'Returns false when the script path only appears in a comment or echo statement' {
+        $job = $script:GateDefinition.jobs['echo-only-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+
+    It 'Returns false when the npm alias only appears in an echo statement' {
+        $job = $script:GateDefinition.jobs['echo-only-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath $null -NpmAlias 'lint:fixture' | Should -BeFalse
+    }
+
+    It 'Returns false when the script path only appears in a comment line, with no echo present' {
+        $job = $script:GateDefinition.jobs['comment-only-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+
+    It 'Returns false when the npm alias only appears in a comment line, with no echo present' {
+        $job = $script:GateDefinition.jobs['comment-only-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath $null -NpmAlias 'lint:fixture' | Should -BeFalse
+    }
+
+    It 'Returns false when the script path is mentioned only as an argument to an unrelated command' {
+        $job = $script:GateDefinition.jobs['argument-only-job']
+        Test-StepInvokesTarget -Job $job -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
+    }
+
     It 'Returns false for a null job' {
         Test-StepInvokesTarget -Job $null -ScriptPath 'scripts/security/Test-Fixture.ps1' -NpmAlias $null | Should -BeFalse
     }
@@ -311,6 +336,37 @@ Describe 'Invoke-DocumentedEnforcementCheck' -Tag 'Unit' {
         $json = Get-Content -Raw -Path $script:OutputPath | ConvertFrom-Json
         $json.violationCount | Should -Be 6
         $json.totalRules | Should -Be 8
+    }
+
+    It 'Resolves relative path parameters against RepoRoot, not the current working directory' {
+        # Regression test: every path parameter used to be passed straight to
+        # Get-Content/Test-Path/Get-ChildItem without joining RepoRoot, so a
+        # caller invoking from outside the repository with relative paths plus
+        # -RepoRoot would inspect the caller's current directory instead of
+        # the requested repository.
+        $unrelatedDirectory = Join-Path $TestDrive 'unrelated-cwd'
+        New-Item -ItemType Directory -Path $unrelatedDirectory -Force | Out-Null
+
+        Push-Location -Path $unrelatedDirectory
+        try {
+            $exitCode = Invoke-DocumentedEnforcementCheck `
+                -InstructionsPaths @('instructions.md') `
+                -WorkflowsPath '.github/workflows' `
+                -PackageJsonPath 'package.json' `
+                -GateWorkflowPath '.github/workflows/gate.yml' `
+                -GateJobId 'fixture-gate-success' `
+                -OutputPath $script:OutputPath `
+                -RepoRoot $script:FixturesPath `
+                -FailOnViolation
+        }
+        finally {
+            Pop-Location
+        }
+
+        $exitCode | Should -Be 1
+        $json = Get-Content -Raw -Path $script:OutputPath | ConvertFrom-Json
+        $json.totalRules | Should -Be 8
+        $json.violationCount | Should -Be 6
     }
 
 }

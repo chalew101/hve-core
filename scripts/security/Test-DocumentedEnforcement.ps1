@@ -72,8 +72,11 @@
     'logs/documented-enforcement-results.json'.
 
 .PARAMETER RepoRoot
-    Repository root that documented script paths and 'uses: ./...' local
-    reusable workflow paths are resolved against. Defaults to '.'.
+    Repository root that every relative path parameter (InstructionsPaths,
+    WorkflowsPath, PackageJsonPath, GateWorkflowPath, documented script paths,
+    and 'uses: ./...' local reusable workflow paths) is resolved against.
+    Defaults to '.'. An already-rooted (absolute) parameter value is used
+    as-is, so RepoRoot has no effect on it.
 
 .PARAMETER FailOnViolation
     When set, exits with a non-zero code if any rule resolves to a broken link
@@ -130,6 +133,47 @@ $ErrorActionPreference = 'Stop'
 Import-Module powershell-yaml -ErrorAction Stop
 
 #region Functions
+
+function Resolve-EnforcementPath {
+    <#
+    .SYNOPSIS
+        Resolves a possibly-relative path against a repository root.
+
+    .DESCRIPTION
+        Returns Path unchanged when it is $null, empty, or already rooted
+        (absolute, or a PowerShell-provider-qualified path). Otherwise joins
+        it to RepoRoot, so every default and caller-supplied instructions,
+        package.json, workflow, and workflow-directory path is interpreted
+        relative to the requested repository rather than to the current
+        process working directory.
+
+    .PARAMETER Path
+        The path to resolve.
+
+    .PARAMETER RepoRoot
+        Repository root to resolve a relative Path against.
+
+    .OUTPUTS
+        [string]
+    #>
+    [CmdletBinding()]
+    [OutputType([string])]
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        [AllowEmptyString()]
+        [string]$Path,
+
+        [Parameter(Mandatory = $true)]
+        [string]$RepoRoot
+    )
+
+    if ([string]::IsNullOrEmpty($Path) -or [System.IO.Path]::IsPathRooted($Path)) {
+        return $Path
+    }
+
+    return Join-Path -Path $RepoRoot -ChildPath $Path
+}
 
 function Get-DocumentedEnforcementReference {
     <#
@@ -288,6 +332,11 @@ function Get-DocumentedEnforcementRule {
     .PARAMETER PackageJsonPath
         Path to package.json.
 
+    .PARAMETER RepoRoot
+        Repository root that a relative InstructionsPaths entry or
+        PackageJsonPath is resolved against. Defaults to '.'. Already-rooted
+        (absolute) paths are used as-is.
+
     .OUTPUTS
         [pscustomobject[]] with InstructionsFile, ScriptPath, NpmAlias,
         UnresolvedReason, and References (raw backtick strings) properties.
@@ -299,23 +348,28 @@ function Get-DocumentedEnforcementRule {
         [string[]]$InstructionsPaths,
 
         [Parameter(Mandatory = $true)]
-        [string]$PackageJsonPath
+        [string]$PackageJsonPath,
+
+        [Parameter(Mandatory = $false)]
+        [string]$RepoRoot = '.'
     )
 
+    $resolvedPackageJsonPath = Resolve-EnforcementPath -Path $PackageJsonPath -RepoRoot $RepoRoot
     $packageJsonScripts = $null
-    if (Test-Path -Path $PackageJsonPath) {
-        $packageJson = Get-Content -Raw -Path $PackageJsonPath | ConvertFrom-Json
+    if (Test-Path -Path $resolvedPackageJsonPath) {
+        $packageJson = Get-Content -Raw -Path $resolvedPackageJsonPath | ConvertFrom-Json
         $packageJsonScripts = $packageJson.scripts
     }
 
     $rules = [System.Collections.Generic.List[pscustomobject]]::new()
 
     foreach ($instructionsPath in $InstructionsPaths) {
-        if (-not (Test-Path -Path $instructionsPath)) {
-            throw "Instructions file not found: $instructionsPath"
+        $resolvedInstructionsPath = Resolve-EnforcementPath -Path $instructionsPath -RepoRoot $RepoRoot
+        if (-not (Test-Path -Path $resolvedInstructionsPath)) {
+            throw "Instructions file not found: $resolvedInstructionsPath"
         }
 
-        $references = Get-DocumentedEnforcementReference -InstructionsPath $instructionsPath
+        $references = Get-DocumentedEnforcementReference -InstructionsPath $resolvedInstructionsPath
         $seen = [System.Collections.Generic.Dictionary[string, pscustomobject]]::new()
 
         foreach ($reference in $references) {
@@ -388,7 +442,14 @@ function Get-WorkflowDefinition {
 function Test-StepInvokesTarget {
     <#
     .SYNOPSIS
-        Checks whether a job's steps invoke a script path or npm alias.
+        Checks whether a job's steps actually execute a script path or npm alias.
+
+    .DESCRIPTION
+        Recognizes executable command forms only: the script invoked directly
+        (optionally with a leading './'), or via `pwsh ... -File <script>`, or
+        via `npm run <alias>`. A path or alias mentioned inside a comment, an
+        echo/log statement, or any other non-command position does not count
+        as an invocation.
 
     .PARAMETER Job
         A parsed workflow job object.
@@ -400,7 +461,7 @@ function Test-StepInvokesTarget {
         Optional npm script alias to also search for as 'npm run <alias>'.
 
     .OUTPUTS
-        [bool] Whether any step's 'run:' text references the script or alias.
+        [bool] Whether any step's 'run:' text executes the script or alias.
     #>
     [CmdletBinding()]
     [OutputType([bool])]
@@ -424,17 +485,41 @@ function Test-StepInvokesTarget {
         return $false
     }
 
+    $escapedScriptPath = if ($ScriptPath) { [regex]::Escape($ScriptPath) } else { $null }
+    $escapedNpmAlias = if ($NpmAlias) { [regex]::Escape($NpmAlias) } else { $null }
+
     foreach ($step in @($Job.steps)) {
         if ($null -eq $step -or $null -eq $step.run -or $step.run -isnot [string]) {
             continue
         }
 
-        if ($ScriptPath -and $step.run.Contains($ScriptPath)) {
-            return $true
-        }
+        # Split multi-line `run:` blocks into individual command lines, then split each
+        # line on shell command separators, so a path mentioned only inside an echo/log
+        # argument or a comment is never mistaken for the command being executed.
+        foreach ($line in ($step.run -split "`r?`n")) {
+            foreach ($commandText in ($line -split '&&|;|\|')) {
+                $trimmedCommand = $commandText.Trim()
 
-        if ($NpmAlias -and $step.run -match "npm run $([regex]::Escape($NpmAlias))(\s|$)") {
-            return $true
+                if (-not $trimmedCommand -or $trimmedCommand.StartsWith('#')) {
+                    continue
+                }
+
+                if ($escapedScriptPath) {
+                    # Executable-position match: the script is the command itself, or the
+                    # `-File` argument to a `pwsh` invocation, optionally with a leading './'.
+                    if ($trimmedCommand -match "^(?:\./)?${escapedScriptPath}(?:\s|$)") {
+                        return $true
+                    }
+
+                    if ($trimmedCommand -match "^pwsh(?:\.exe)?\b.*\s-File\s+(?:\./)?${escapedScriptPath}(?:\s|$)") {
+                        return $true
+                    }
+                }
+
+                if ($escapedNpmAlias -and $trimmedCommand -match "^npm run ${escapedNpmAlias}(?:\s|$)") {
+                    return $true
+                }
+            }
         }
     }
 
@@ -528,8 +613,9 @@ function Find-GatingJob {
         Workflow-definition memoization cache.
 
     .PARAMETER RepoRoot
-        Repository root that 'uses: ./...' local reusable workflow paths are
-        resolved against. Defaults to '.'.
+        Repository root that a relative GateWorkflowPath and 'uses: ./...'
+        local reusable workflow paths are resolved against. Defaults to '.'.
+        An already-rooted (absolute) GateWorkflowPath is used as-is.
 
     .OUTPUTS
         [string[]] Distinct job IDs, in the gate workflow, that reach the script.
@@ -555,7 +641,8 @@ function Find-GatingJob {
         [string]$RepoRoot = '.'
     )
 
-    $definition = Get-WorkflowDefinition -WorkflowPath $GateWorkflowPath -Cache $Cache
+    $resolvedGateWorkflowPath = Resolve-EnforcementPath -Path $GateWorkflowPath -RepoRoot $RepoRoot
+    $definition = Get-WorkflowDefinition -WorkflowPath $resolvedGateWorkflowPath -Cache $Cache
     if ($null -eq $definition -or $null -eq $definition.jobs) {
         return @()
     }
@@ -605,6 +692,11 @@ function Get-GateNeedsList {
     .PARAMETER Cache
         Workflow-definition memoization cache.
 
+    .PARAMETER RepoRoot
+        Repository root that a relative GateWorkflowPath is resolved against.
+        Defaults to '.'. An already-rooted (absolute) GateWorkflowPath is used
+        as-is.
+
     .OUTPUTS
         [string[]] The gate job's 'needs:' entries, or an empty array if the
         gate job is absent or declares no 'needs:'.
@@ -619,10 +711,14 @@ function Get-GateNeedsList {
         [string]$GateJobId,
 
         [Parameter(Mandatory = $true)]
-        [hashtable]$Cache
+        [hashtable]$Cache,
+
+        [Parameter(Mandatory = $false)]
+        [string]$RepoRoot = '.'
     )
 
-    $definition = Get-WorkflowDefinition -WorkflowPath $GateWorkflowPath -Cache $Cache
+    $resolvedGateWorkflowPath = Resolve-EnforcementPath -Path $GateWorkflowPath -RepoRoot $RepoRoot
+    $definition = Get-WorkflowDefinition -WorkflowPath $resolvedGateWorkflowPath -Cache $Cache
     if ($null -eq $definition -or $null -eq $definition.jobs -or -not $definition.jobs.ContainsKey($GateJobId)) {
         return @()
     }
@@ -657,8 +753,10 @@ function Get-DocumentedEnforcementResult {
         Job ID of the aggregator gate.
 
     .PARAMETER RepoRoot
-        Repository root that documented script paths and 'uses: ./...' local
-        reusable workflow paths are resolved against. Defaults to '.'.
+        Repository root that InstructionsPaths, WorkflowsPath, PackageJsonPath,
+        GateWorkflowPath, documented script paths, and 'uses: ./...' local
+        reusable workflow paths are all resolved against. Defaults to '.'. An
+        already-rooted (absolute) parameter value is used as-is.
 
     .OUTPUTS
         [pscustomobject[]] with InstructionsFile, References, ScriptPath,
@@ -687,15 +785,20 @@ function Get-DocumentedEnforcementResult {
         [string]$RepoRoot = '.'
     )
 
-    $rules = Get-DocumentedEnforcementRule -InstructionsPaths $InstructionsPaths -PackageJsonPath $PackageJsonPath
+    $rules = Get-DocumentedEnforcementRule -InstructionsPaths $InstructionsPaths -PackageJsonPath $PackageJsonPath -RepoRoot $RepoRoot
 
+    $resolvedWorkflowsPath = Resolve-EnforcementPath -Path $WorkflowsPath -RepoRoot $RepoRoot
     $workflowFiles = @()
-    if (Test-Path -Path $WorkflowsPath) {
-        $workflowFiles = @(Get-ChildItem -Path $WorkflowsPath -Filter '*.yml' -File | ForEach-Object { $_.FullName -replace [regex]::Escape((Get-Location).Path + [System.IO.Path]::DirectorySeparatorChar), '' })
+    if (Test-Path -Path $resolvedWorkflowsPath) {
+        # Full, absolute paths so downstream Get-WorkflowDefinition lookups (in
+        # Find-EnforcementInvocation) resolve correctly regardless of the
+        # current working directory, and regardless of whether RepoRoot
+        # differs from it.
+        $workflowFiles = @(Get-ChildItem -Path $resolvedWorkflowsPath -Filter '*.yml' -File | ForEach-Object { $_.FullName })
     }
 
     $cache = @{}
-    $needsList = Get-GateNeedsList -GateWorkflowPath $GateWorkflowPath -GateJobId $GateJobId -Cache $cache
+    $needsList = Get-GateNeedsList -GateWorkflowPath $GateWorkflowPath -GateJobId $GateJobId -Cache $cache -RepoRoot $RepoRoot
 
     $results = [System.Collections.Generic.List[pscustomobject]]::new()
 
@@ -709,7 +812,7 @@ function Get-DocumentedEnforcementResult {
             $brokenLink = 'npm-alias-unresolved'
             $detail = $rule.UnresolvedReason
         }
-        elseif (-not (Test-Path -Path (Join-Path -Path $RepoRoot -ChildPath $rule.ScriptPath))) {
+        elseif (-not (Test-Path -Path (Resolve-EnforcementPath -Path $rule.ScriptPath -RepoRoot $RepoRoot))) {
             $status = 'Violation'
             $brokenLink = 'script-missing'
             $detail = "Script file does not exist: $($rule.ScriptPath)"
@@ -784,8 +887,10 @@ function Invoke-DocumentedEnforcementCheck {
         Path for the JSON results file.
 
     .PARAMETER RepoRoot
-        Repository root that documented script paths and 'uses: ./...' local
-        reusable workflow paths are resolved against. Defaults to '.'.
+        Repository root that InstructionsPaths, WorkflowsPath, PackageJsonPath,
+        GateWorkflowPath, documented script paths, and 'uses: ./...' local
+        reusable workflow paths are all resolved against. Defaults to '.'. An
+        already-rooted (absolute) parameter value is used as-is.
 
     .PARAMETER FailOnViolation
         When set, returns 1 if any rule resolves to a broken link.
